@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.7;
 
+import {VennFirewallConsumer} from "@ironblocks/firewall-consumer/contracts/consumers/VennFirewallConsumer.sol";
 import { ERC20Helper }           from "../modules/erc20-helper/src/ERC20Helper.sol";
 import { IMapleProxyFactory }    from "../modules/maple-proxy-factory/contracts/interfaces/IMapleProxyFactory.sol";
 import { MapleProxiedInternals } from "../modules/maple-proxy-factory/contracts/MapleProxiedInternals.sol";
@@ -21,7 +22,7 @@ import { LoanManagerStorage } from "./LoanManagerStorage.sol";
 
 */
 
-contract LoanManager is ILoanManager, MapleProxiedInternals, LoanManagerStorage {
+contract LoanManager is VennFirewallConsumer, ILoanManager, MapleProxiedInternals, LoanManagerStorage {
 
     uint256 public override constant HUNDRED_PERCENT = 1e6;   // 100.0000%
     uint256 public override constant PRECISION       = 1e27;
@@ -59,18 +60,18 @@ contract LoanManager is ILoanManager, MapleProxiedInternals, LoanManagerStorage 
     /*** Upgradeability Functions                                                                                                       ***/
     /**************************************************************************************************************************************/
 
-    function migrate(address migrator_, bytes calldata arguments_) external override whenNotPaused {
+    function migrate(address migrator_, bytes calldata arguments_) external override whenNotPaused firewallProtected {
         require(msg.sender == _factory(),        "LM:M:NOT_FACTORY");
         require(_migrate(migrator_, arguments_), "LM:M:FAILED");
     }
 
-    function setImplementation(address implementation_) external override whenNotPaused {
+    function setImplementation(address implementation_) external override whenNotPaused firewallProtected {
         require(msg.sender == _factory(), "LM:SI:NOT_FACTORY");
 
         _setImplementation(implementation_);
     }
 
-    function upgrade(uint256 version_, bytes calldata arguments_) external override whenNotPaused {
+    function upgrade(uint256 version_, bytes calldata arguments_) external override whenNotPaused firewallProtected {
         IGlobalsLike globals_ = IGlobalsLike(_globals());
 
         if (msg.sender == _poolDelegate()) {
@@ -90,7 +91,7 @@ contract LoanManager is ILoanManager, MapleProxiedInternals, LoanManagerStorage 
     /*** Loan Funding and Refinancing Functions                                                                                         ***/
     /**************************************************************************************************************************************/
 
-    function fund(address loan_) external override whenNotPaused nonReentrant onlyPoolDelegate {
+    function fund(address loan_) external override whenNotPaused nonReentrant onlyPoolDelegate firewallProtected {
         address      factory_ = ILoanLike(loan_).factory();
         IGlobalsLike globals_ = IGlobalsLike(_globals());
 
@@ -116,13 +117,13 @@ contract LoanManager is ILoanManager, MapleProxiedInternals, LoanManagerStorage 
     }
 
     function proposeNewTerms(address loan_, address refinancer_, uint256 deadline_, bytes[] calldata calls_)
-        external override whenNotPaused onlyPoolDelegate isLoan(loan_)
+        external override whenNotPaused onlyPoolDelegate isLoan(loan_) firewallProtected
     {
         ILoanLike(loan_).proposeNewTerms(refinancer_, deadline_, calls_);
     }
 
     function rejectNewTerms(address loan_, address refinancer_, uint256 deadline_, bytes[] calldata calls_)
-        external override whenNotPaused onlyPoolDelegate isLoan(loan_)
+        external override whenNotPaused onlyPoolDelegate isLoan(loan_) firewallProtected
     {
         ILoanLike(loan_).rejectNewTerms(refinancer_, deadline_, calls_);
     }
@@ -138,7 +139,7 @@ contract LoanManager is ILoanManager, MapleProxiedInternals, LoanManagerStorage 
         uint256 platformServiceFee_,
         uint40  nextPaymentDueDate_
     )
-        external override whenNotPaused isLoan(msg.sender) nonReentrant
+        external override whenNotPaused isLoan(msg.sender) nonReentrant firewallProtected
     {
         uint256 principalRemaining_ = ILoanLike(msg.sender).principal();
 
@@ -195,11 +196,11 @@ contract LoanManager is ILoanManager, MapleProxiedInternals, LoanManagerStorage 
     /*** Loan Call Functions                                                                                                            ***/
     /**************************************************************************************************************************************/
 
-    function callPrincipal(address loan_, uint256 principal_) external override whenNotPaused onlyPoolDelegate isLoan(loan_) {
+    function callPrincipal(address loan_, uint256 principal_) external override whenNotPaused onlyPoolDelegate isLoan(loan_) firewallProtected {
         ILoanLike(loan_).callPrincipal(principal_);
     }
 
-    function removeCall(address loan_) external override whenNotPaused onlyPoolDelegate isLoan(loan_) {
+    function removeCall(address loan_) external override whenNotPaused onlyPoolDelegate isLoan(loan_) firewallProtected {
         ILoanLike(loan_).removeCall();
     }
 
@@ -207,7 +208,7 @@ contract LoanManager is ILoanManager, MapleProxiedInternals, LoanManagerStorage 
     /*** Loan Impairment Functions                                                                                                      ***/
     /**************************************************************************************************************************************/
 
-    function impairLoan(address loan_) external override whenNotPaused isLoan(loan_) {
+    function impairLoan(address loan_) external override whenNotPaused isLoan(loan_) firewallProtected {
         bool isGovernor_ = msg.sender == _governor();
 
         require(isGovernor_ || msg.sender == _poolDelegate(), "LM:IL:NO_AUTH");
@@ -221,7 +222,7 @@ contract LoanManager is ILoanManager, MapleProxiedInternals, LoanManagerStorage 
         }
     }
 
-    function removeLoanImpairment(address loan_) external override whenNotPaused isLoan(loan_) {
+    function removeLoanImpairment(address loan_) external override whenNotPaused isLoan(loan_) firewallProtected {
         ( , bool impairedByGovernor_ ) = _accountForLoanImpairmentRemoval(loan_, ILoanLike(loan_).principal());
 
         require(msg.sender == _governor() || (!impairedByGovernor_ && msg.sender == _poolDelegate()), "LM:RLI:NO_AUTH");
@@ -234,7 +235,7 @@ contract LoanManager is ILoanManager, MapleProxiedInternals, LoanManagerStorage 
     /**************************************************************************************************************************************/
 
     function triggerDefault(address loan_, address liquidatorFactory_)
-        external override returns (bool liquidationComplete_, uint256 remainingLosses_, uint256 unrecoveredPlatformFees_)
+        external override firewallProtected returns (bool liquidationComplete_, uint256 remainingLosses_, uint256 unrecoveredPlatformFees_)
     {
         liquidatorFactory_;  // Silence compiler warning.
 
